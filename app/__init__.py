@@ -1,7 +1,8 @@
 from flask import Flask, send_file, make_response
 import base64, requests, json
-from datetime import date, datetime, time
-from flask.templating import render_template
+from datetime import datetime
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.interval import IntervalTrigger
 
 
 app = Flask(__name__)
@@ -13,12 +14,6 @@ with open('config.json', 'r') as f:
     config['OAUTH_TOKEN'] = c['OAUTH_TOKEN']
     config['REFRESH_TOKEN'] = c['REFRESH_TOKEN']
 
-class SongData:
-    def __init__(self):
-        self.current_song = None
-        self.current_artist = None
-        self.current_album = None
-        self.is_playing = False
 
 def replace_text(src, title, artist, album_name, progress, duration):
     if len(title) >= 20:
@@ -49,9 +44,9 @@ def get_now_playing(oauth_token):
         url = "https://api.spotify.com/v1/me/player/currently-playing"
         res = requests.get(url, headers=headers)
         if res.status_code == 204:
-            return (None, None, None, None, None, None)
+            return (None, None, None, None, None, None, False)
         if res.json() == None:
-            return (None, None, None, None, None, None)
+            return (None, None, None, None, None, None, False)
         if res.json().get('error') != None:
             err = res.json()
             if err['error']['status'] == 401:
@@ -69,17 +64,19 @@ def get_now_playing(oauth_token):
                             json.dump(confObj, jf, indent=4)
                             jf.truncate()
         if res.status_code != 200:
-            return (None, None, None, None, None, None)
+            return (None, None, None, None, None, None, False)
         album_name = None
         artist = None
         title = None
         album_art = None
         duration = None
         progress = None
+        is_playing = False
         if res.json() == None:
-            return (None, None, None, None, None, None)
+            return (None, None, None, None, None, None, False)
         resobj = res.json()
         if resobj.get('item'):
+            is_playing = resobj['is_playing']
             if resobj['item'].get('album'):
                 album_name = resobj['item']['album']['name']
             if resobj['item'].get('artists'):
@@ -92,63 +89,66 @@ def get_now_playing(oauth_token):
                 progress = resobj['progress_ms']
             if resobj['item'].get('duration_ms'):
                 duration = resobj['item']['duration_ms']
-            return (title, artist, album_name, album_art, progress, duration)
-    else:
-        return (None, None, None, None, None, None)
+            return (title, artist, album_name, album_art, progress, duration, is_playing)
+        else:
+            return (None, None, None, None, None, None, False)
 
-@app.before_first_request
-def setup():
-    print('In First Request')
-    title, artist, album_name, album_art, progress, duration = get_now_playing(config['OAUTH_TOKEN'])
-    if None in [title, artist, album_art, album_name, progress, duration]:
-        title = "Not Playing"
-        artist = "N/A"
-        album_art = "N/A"
-        album_name = "N/A"
-        progress = 0
-        duration = 0
-    if "&" in title:
-        title = title.replace("&", "+")
-    if "&" in artist:
-        artist = artist.replace("&", "+")
-    if "&" in album_name:
-        album_name = album_name.replace("&", "+")
+def update_songs(sd):
+    sd.title, sd.artist, sd.album_name, sd.album_art, sd.progress, sd.duration, sd.is_playing = get_now_playing(config['OAUTH_TOKEN'])
+    if sd.is_playing:
+        if "&" in sd.title:
+            sd.title = sd.title.replace("&", "+")
+        if "&" in sd.artist:
+            sd.artist = sd.artist.replace("&", "+")
+        if "&" in sd.album_name:
+            sd.album_name = sd.album_name.replace("&", "+")
+        src = ""
+        with open('template-clean.svg', 'r') as f:
+            src = f.read()
+        src = replace_text(src, sd.title, sd.artist, sd.album_name, sd.progress, sd.duration)
+        src = replace_album_art(src, sd.album_art)
+        with open('app/templates/assets/output.svg', 'w') as o:
+            o.write(src)
+
+class SongData:
+    def __init__(self):
+        self.title = None
+        self.artist = None
+        self.album_name = None
+        self.album_art = None
+        self.progress = None
+        self.duration = None
+        self.is_playing = False
+
+sd = SongData()
+sd.title, sd.artist, sd.album_name, sd.album_art, sd.progress, sd.duration, sd.is_playing = get_now_playing(config['OAUTH_TOKEN'])
+if sd.is_playing:
+    if "&" in sd.title:
+        sd.title = sd.title.replace("&", "+")
+    if "&" in sd.artist:
+        sd.artist = sd.artist.replace("&", "+")
+    if "&" in sd.album_name:
+        sd.album_name = sd.album_name.replace("&", "+")
     src = ""
     with open('template-clean.svg', 'r') as f:
         src = f.read()
-    src = replace_text(src, title, artist, album_name, progress, duration)
-    src = replace_album_art(src, album_art)
+    src = replace_text(src, sd.title, sd.artist, sd.album_name, sd.progress, sd.duration)
+    src = replace_album_art(src, sd.album_art)
     with open('app/templates/assets/output.svg', 'w') as o:
         o.write(src)
 
 @app.route('/')
 def index():
-    title, artist, album_name, album_art, progress, duration = get_now_playing(config['OAUTH_TOKEN'])
-    if None in [title, artist, album_art, album_name, progress, duration]:
-        title = "Not Playing"
-        artist = "N/A"
-        album_art = "N/A"
-        album_name = "N/A"
-        progress = 0
-        duration = 0
-    if "&" in title:
-        title = title.replace("&", "+")
-    if "&" in artist:
-        artist = artist.replace("&", "+")
-    if "&" in album_name:
-        album_name = album_name.replace("&", "+")
-    if artist != "N/A" and album_name != "N/A":
-        src = ""
-        with open('template-clean.svg', 'r') as f:
-            src = f.read()
-        src = replace_text(src, title, artist, album_name, progress, duration)
-        src = replace_album_art(src, album_art)
-        with open('app/templates/assets/output.svg', 'w') as o:
-            o.write(src)
+    if sd.is_playing:
         res = make_response(send_file('templates/assets/output.svg', mimetype='image/svg+xml'))
-        res.headers.set('Cache-Control', 'max-age=5')
+        res.headers.set('Cache-Control', 'max-age=3')
         return res
     else:
         res = make_response(send_file('templates/assets/paused.svg', mimetype='image/svg+xml'))
-        res.headers.set('Cache-Control', 'max-age=5')
+        res.headers.set('Cache-Control', 'max-age=3')
         return res
+
+sched = BackgroundScheduler()
+trig = IntervalTrigger(seconds=3)
+sched.add_job(update_songs, args=[sd], trigger=trig)
+sched.start()
