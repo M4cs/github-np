@@ -16,12 +16,12 @@ with open('config.json', 'r') as f:
 
 
 def replace_text(src, title, artist, album_name, progress, duration, percentage):
-    if len(title) >= 23:
-        title = title[0:20] + "..."
-    if len(artist) >= 25:
-        artist = artist[0:25] + "..."
-    if len(album_name) >= 30:
-        album_name = album_name[0:27] + "..."
+    if len(title) >= 45:
+        title = title[0:42] + "..."
+    if len(artist) >= 50:
+        artist = artist[0:47] + "..."
+    if len(album_name) >= 60:
+        album_name = album_name[0:57] + "..."
     src = src.replace('Song Title', title.upper())
     src = src.replace('Artist Name', artist)
     src = src.replace('Album Title', album_name)
