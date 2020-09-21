@@ -15,7 +15,7 @@ with open('config.json', 'r') as f:
     config['REFRESH_TOKEN'] = c['REFRESH_TOKEN']
 
 
-def replace_text(src, title, artist, album_name, progress, duration):
+def replace_text(src, title, artist, album_name, progress, duration, percentage):
     if len(title) >= 20:
         title = title[0:17] + "..."
     if len(artist) >= 20:
@@ -27,6 +27,7 @@ def replace_text(src, title, artist, album_name, progress, duration):
     src = src.replace('Album Title', album_name)
     src = src.replace('Progress', datetime.utcfromtimestamp(progress / 1000).strftime("%M:%S"))
     src = src.replace('Duration', datetime.utcfromtimestamp(duration / 1000).strftime("%M:%S"))
+    src = src.replace('{prog_width}', str(int(9.16  * percentage))) 
     return src
 
 def replace_album_art(src, image):
@@ -44,9 +45,9 @@ def get_now_playing(oauth_token):
         url = "https://api.spotify.com/v1/me/player/currently-playing"
         res = requests.get(url, headers=headers)
         if res.status_code == 204:
-            return (None, None, None, None, None, None, False)
+            return (None, None, None, None, None, None, None, False)
         if res.json() == None:
-            return (None, None, None, None, None, None, False)
+            return (None, None, None, None, None, None, None, False)
         if res.json().get('error') != None:
             err = res.json()
             if err['error']['status'] == 401:
@@ -64,7 +65,7 @@ def get_now_playing(oauth_token):
                             json.dump(confObj, jf, indent=4)
                             jf.truncate()
         if res.status_code != 200:
-            return (None, None, None, None, None, None, False)
+            return (None, None, None, None, None, None, None, False)
         album_name = None
         artist = None
         title = None
@@ -73,7 +74,7 @@ def get_now_playing(oauth_token):
         progress = None
         is_playing = False
         if res.json() == None:
-            return (None, None, None, None, None, None, False)
+            return (None, None, None, None, None, None, None, False)
         resobj = res.json()
         if resobj.get('item'):
             is_playing = resobj['is_playing']
@@ -89,12 +90,13 @@ def get_now_playing(oauth_token):
                 progress = resobj['progress_ms']
             if resobj['item'].get('duration_ms'):
                 duration = resobj['item']['duration_ms']
-            return (title, artist, album_name, album_art, progress, duration, is_playing)
+            percentage = (int(progress) / int(duration)) * 100
+            return (title, artist, album_name, album_art, progress, duration, percentage, is_playing)
         else:
             return (None, None, None, None, None, None, False)
 
 def update_songs(sd):
-    sd.title, sd.artist, sd.album_name, sd.album_art, sd.progress, sd.duration, sd.is_playing = get_now_playing(config['OAUTH_TOKEN'])
+    sd.title, sd.artist, sd.album_name, sd.album_art, sd.progress, sd.duration, sd.percentage, sd.is_playing = get_now_playing(config['OAUTH_TOKEN'])
     if sd.is_playing:
         if "&" in sd.title:
             sd.title = sd.title.replace("&", "+")
@@ -105,7 +107,7 @@ def update_songs(sd):
         src = ""
         with open('template-clean.svg', 'r') as f:
             src = f.read()
-        src = replace_text(src, sd.title, sd.artist, sd.album_name, sd.progress, sd.duration)
+        src = replace_text(src, sd.title, sd.artist, sd.album_name, sd.progress, sd.duration, sd.percentage)
         src = replace_album_art(src, sd.album_art)
         with open('app/templates/assets/output.svg', 'w') as o:
             o.write(src)
@@ -118,10 +120,11 @@ class SongData:
         self.album_art = None
         self.progress = None
         self.duration = None
+        self.percentage = None
         self.is_playing = False
 
 sd = SongData()
-sd.title, sd.artist, sd.album_name, sd.album_art, sd.progress, sd.duration, sd.is_playing = get_now_playing(config['OAUTH_TOKEN'])
+sd.title, sd.artist, sd.album_name, sd.album_art, sd.progress, sd.duration, sd.percentage, sd.is_playing = get_now_playing(config['OAUTH_TOKEN'])
 if sd.is_playing:
     if "&" in sd.title:
         sd.title = sd.title.replace("&", "+")
@@ -132,7 +135,7 @@ if sd.is_playing:
     src = ""
     with open('template-clean.svg', 'r') as f:
         src = f.read()
-    src = replace_text(src, sd.title, sd.artist, sd.album_name, sd.progress, sd.duration)
+    src = replace_text(src, sd.title, sd.artist, sd.album_name, sd.progress, sd.duration, sd.percentage)
     src = replace_album_art(src, sd.album_art)
     with open('app/templates/assets/output.svg', 'w') as o:
         o.write(src)
