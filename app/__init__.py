@@ -22,12 +22,12 @@ def replace_text(src, title, artist, album_name, progress, duration, percentage)
         artist = artist[0:25] + "..."
     if len(album_name) >= 30:
         album_name = album_name[0:27] + "..."
-    src = src.replace('Song Title', title)
+    src = src.replace('Song Title', title.upper())
     src = src.replace('Artist Name', artist)
     src = src.replace('Album Title', album_name)
     src = src.replace('Progress', datetime.utcfromtimestamp(progress / 1000).strftime("%M:%S"))
     src = src.replace('Duration', datetime.utcfromtimestamp(duration / 1000).strftime("%M:%S"))
-    src = src.replace('{prog_width}', str(int(9.16  * percentage))) 
+    src = src.replace('{prog_width}', str(int(9.54  * percentage))) 
     return src
 
 def replace_album_art(src, image):
